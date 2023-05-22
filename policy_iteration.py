@@ -1,68 +1,77 @@
-actions = (0, 1)  # actions (0=left, 1=right)
-states = (0, 1, 2, 3, 4)  # states (tiles)
-rewards = [-1, -1, 10, -1, -1]  # Direct rewards per state
-gamma = 0.9  # discount factor
-delta = 10  # Error tolerance
-# Transition probabilities per state-action pair
-probs = [
-    [[0.9, 0.1], [0.1, 0.9], [0, 0], [0, 0], [0, 0]],
-    [[0.9, 0.1], [0, 0], [0.1, 0.9], [0, 0], [0, 0]],
-    [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],  # Terminating state (all probs 0)
-    [[0, 0], [0, 0], [0.9, 0.1], [0, 0], [0.1, 0.9]],
-    [[0, 0], [0, 0], [0, 0], [0.9, 0.1], [0.1, 0.9]],
-]
-
-# Set policy iteration parameters
-max_policy_iter = 10000  # Maximum number of policy iterations
-max_value_iter = 10000  # Maximum number of value iterations
-pi = [0 for s in states]
-V = [0 for s in states]
-
-
-for i in range(max_policy_iter):
-    # Initial assumption: policy is stable
-    optimal_policy_found = True
-
-    # Policy evaluation
-    # Compute value for each state under current policy
-    for j in range(max_value_iter):
-        max_diff = 0  # Initialize max difference
-        V_new = [0, 0, 0, 0, 0]  # Initialize values
-        for s in states:
-
-            # Compute state value
-            val = rewards[s]  # Get direct reward
-            for s_next in states:
-                val += probs[s][s_next][pi[s]] * (
-                        gamma * V[s_next]
-                )  # Add discounted downstream values
-
-            # Update maximum difference
-            max_diff = max(max_diff, abs(val - V[s]))
-
-            V[s] = val  # Update value with highest value
-        # If diff smaller than threshold delta for all states, algorithm terminates
-        if max_diff < delta:
+import random
+REWARD = -0.01
+DISCOUNT = 0.99
+MAX_ERROR = 10**(-3)
+NUM_ACTIONS = 4
+ACTIONS = [(1, 0), (0, -1), (-1, 0), (0, 1)]
+NUM_ROW = 3
+NUM_COL = 4
+U = [[0, 0, 0, 1], [0, 0, 0, -1], [0, 0, 0, 0], [0, 0, 0, 0]]
+policy = [[random.randint(0, 3) for j in range(NUM_COL)] for i in range(NUM_ROW)]
+def printEnvironment(arr, policy=False):
+    res = ""
+    for r in range(NUM_ROW):
+        res += "|"
+        for c in range(NUM_COL):
+            if r == c == 1:
+                val = "WALL"
+            elif r <= 1 and c == 3:
+                val = "+1" if r == 0 else "-1"
+            else:
+                val = ["Down", "Left", "Up", "Right"][arr[r][c]]
+            res += " " + val[:5].ljust(5) + " |"
+        res += "\n"
+    print(res)
+def getU(U, r, c, action):
+    dr, dc = ACTIONS[action]
+    newR, newC = r+dr, c+dc
+    if newR < 0 or newC < 0 or newR >= NUM_ROW or newC >= NUM_COL or (newR == newC == 1):
+        return U[r][c]
+    else:
+        return U[newR][newC]
+def calculateU(U, r, c, action):
+    u = REWARD
+    u += 0.1 * DISCOUNT * getU(U, r, c, (action-1)%4)
+    u += 0.8 * DISCOUNT * getU(U, r, c, action)
+    u += 0.1 * DISCOUNT * getU(U, r, c, (action+1)%4)
+    return u
+def policyEvaluation(policy, U):
+    while True:
+        nextU = [[0, 0, 0, 1], [0, 0, 0, -1], [0, 0, 0, 0], [0, 0, 0, 0]]
+        error = 0
+        for r in range(NUM_ROW):
+            for c in range(NUM_COL):
+                if (r <= 1 and c == 3) or (r == c == 1):
+                    continue
+                nextU[r][c] = calculateU(U, r, c, policy[r][c])
+                error = max(error, abs(nextU[r][c]-U[r][c]))
+        U = nextU
+        if error < MAX_ERROR * (1-DISCOUNT) / DISCOUNT:
             break
-
-    # Policy iteration
-    # With updated state values, improve policy if needed
-    for s in states:
-
-        val_max = V[s]
-        for a in actions:
-            val = rewards[s]  # Get direct reward
-            for s_next in states:
-                val += probs[s][s_next][a] * (
-                    gamma * V[s_next]
-                )  # Add discounted downstream values
-
-            # Update policy if (i) action improves value and (ii) action different from current policy
-            if val > val_max and pi[s] != a:
-                pi[s] = a
-                val_max = val
-                optimal_policy_found = False
-
-    # If policy did not change, algorithm terminates
-    if optimal_policy_found:
-        break
+    return U
+def policyIteration(policy, U):
+    print("During the policy iteration:\n")
+    while True:
+        U = policyEvaluation(policy, U)
+        unchanged = True
+        for r in range(NUM_ROW):
+            for c in range(NUM_COL):
+                if (r <= 1 and c == 3) or (r == c == 1):
+                    continue
+                maxAction, maxU = None, -float("inf")
+                for action in range(NUM_ACTIONS):
+                    u = calculateU(U, r, c, action)
+                    if u > maxU:
+                        maxAction, maxU = action, u
+                if maxU > calculateU(U, r, c, policy[r][c]):
+                    policy[r][c] = maxAction
+                    unchanged = False
+        if unchanged:
+            break
+        printEnvironment(policy)
+    return policy
+print("The initial random policy is:\n")
+printEnvironment(policy)
+policy = policyIteration(policy, U)
+print("The optimal policy is:\n")
+printEnvironment(policy)
